@@ -4,6 +4,38 @@ from dgl import ops
 from dgl.nn.functional import edge_softmax
 
 
+
+class VanillaFeedFordModule(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers):
+        super().__init__()
+
+        if not 1 <= num_layers <= 5:
+            raise ValueError("Number of layers must be between 1 and 5")
+
+        layers = []
+        if num_layers == 1:
+            # If only one layer, directly connect input to output
+            layers.append(nn.Linear(input_dim, output_dim))
+        else:
+            # Create the first layer
+            layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.ReLU())
+
+            # Create intermediate layers
+            for _ in range(num_layers - 2):
+                layers.extend([nn.Linear(hidden_dim, hidden_dim), nn.ReLU()])
+
+            # Create the final layer
+            layers.append(nn.Linear(hidden_dim, output_dim))
+
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.layers(x)
+        return torch.softmax(x, dim=1)
+
+
+
 class ResidualModuleWrapper(nn.Module):
     def __init__(self, module, normalization, dim, **kwargs):
         super().__init__()

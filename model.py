@@ -1,6 +1,6 @@
 from torch import nn
 from modules import (ResidualModuleWrapper, FeedForwardModule, GCNModule, SAGEModule, GATModule, GATSepModule,
-                     TransformerAttentionModule, TransformerAttentionSepModule)
+                     TransformerAttentionModule, TransformerAttentionSepModule,VanillaFeedFordModule)
 
 
 MODULES = {
@@ -10,7 +10,7 @@ MODULES = {
     'GAT': [GATModule],
     'GAT-sep': [GATSepModule],
     'GT': [TransformerAttentionModule, FeedForwardModule],
-    'GT-sep': [TransformerAttentionSepModule, FeedForwardModule]
+    'GT-sep': [TransformerAttentionSepModule, FeedForwardModule],
 }
 
 
@@ -26,37 +26,47 @@ class Model(nn.Module):
                  normalization, dropout):
 
         super().__init__()
+        self.model_name = model_name
+        if self.model_name == 'MLP':
 
-        normalization = NORMALIZATION[normalization]
+            self.model = VanillaFeedFordModule(input_dim=input_dim,
+                                               hidden_dim=hidden_dim,
+                                               output_dim=output_dim,
+                                               num_layers=num_layers)
+        else:
+            normalization = NORMALIZATION[normalization]
 
-        self.input_linear = nn.Linear(in_features=input_dim, out_features=hidden_dim)
-        self.dropout = nn.Dropout(p=dropout)
-        self.act = nn.GELU()
+            self.input_linear = nn.Linear(in_features=input_dim, out_features=hidden_dim)
+            self.dropout = nn.Dropout(p=dropout)
+            self.act = nn.GELU()
 
-        self.residual_modules = nn.ModuleList()
-        for _ in range(num_layers):
-            for module in MODULES[model_name]:
-                residual_module = ResidualModuleWrapper(module=module,
-                                                        normalization=normalization,
-                                                        dim=hidden_dim,
-                                                        hidden_dim_multiplier=hidden_dim_multiplier,
-                                                        num_heads=num_heads,
-                                                        dropout=dropout)
+            self.residual_modules = nn.ModuleList()
+            for _ in range(num_layers):
+                for module in MODULES[model_name]:
+                    residual_module = ResidualModuleWrapper(module=module,
+                                                            normalization=normalization,
+                                                            dim=hidden_dim,
+                                                            hidden_dim_multiplier=hidden_dim_multiplier,
+                                                            num_heads=num_heads,
+                                                            dropout=dropout)
 
-                self.residual_modules.append(residual_module)
+                    self.residual_modules.append(residual_module)
 
-        self.output_normalization = normalization(hidden_dim)
-        self.output_linear = nn.Linear(in_features=hidden_dim, out_features=output_dim)
+            self.output_normalization = normalization(hidden_dim)
+            self.output_linear = nn.Linear(in_features=hidden_dim, out_features=output_dim)
 
     def forward(self, graph, x):
-        x = self.input_linear(x)
-        x = self.dropout(x)
-        x = self.act(x)
+        if self.model_name == 'MLP':
+            return self.model(x)
+        else:
+            x = self.input_linear(x)
+            x = self.dropout(x)
+            x = self.act(x)
 
-        for residual_module in self.residual_modules:
-            x = residual_module(graph, x)
+            for residual_module in self.residual_modules:
+                x = residual_module(graph, x)
 
-        x = self.output_normalization(x)
-        x = self.output_linear(x).squeeze(1)
+            x = self.output_normalization(x)
+            x = self.output_linear(x).squeeze(1)
 
-        return x
+            return x
